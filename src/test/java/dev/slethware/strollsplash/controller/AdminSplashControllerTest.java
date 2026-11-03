@@ -84,7 +84,9 @@ class AdminSplashControllerTest {
     @Test
     void patchWithoutTheKeyGives401() throws Exception {
         mockMvc.perform(patch(PATH + "/" + ID).contentType(MediaType.APPLICATION_JSON).content("{\"pinned\":true}"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid or missing admin key"))
+                .andExpect(jsonPath("$.error").value("Unauthorized"));
 
         verifyNoInteractions(adminSplashService);
     }
@@ -187,7 +189,9 @@ class AdminSplashControllerTest {
     @Test
     void missingBodyGives400() throws Exception {
         mockMvc.perform(patch(PATH + "/" + ID).header(KEY_HEADER, KEY).contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Request body is not valid JSON"))
+                .andExpect(jsonPath("$.error").value("Bad Request"));
     }
 
     private MockMultipartFile video() {
@@ -197,7 +201,9 @@ class AdminSplashControllerTest {
     @Test
     void uploadWithoutTheKeyGives401() throws Exception {
         mockMvc.perform(multipart(PATH).file(video()).param("title", "Original"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid or missing admin key"))
+                .andExpect(jsonPath("$.error").value("Unauthorized"));
 
         verifyNoInteractions(adminSplashService);
     }

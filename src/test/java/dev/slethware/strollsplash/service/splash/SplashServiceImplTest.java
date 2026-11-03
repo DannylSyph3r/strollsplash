@@ -6,6 +6,7 @@ import dev.slethware.strollsplash.enums.SplashKind;
 import dev.slethware.strollsplash.service.storage.StorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,5 +78,19 @@ class SplashServiceImplTest {
         when(splashResolver.resolve(any(), any(Instant.class))).thenReturn(List.of());
 
         assertThat(splashService.getPool()).isEmpty();
+    }
+
+    @Test
+    void poolIsResolvedAgainstTheCurrentTime() {
+        when(splashPoolCache.getActive()).thenReturn(List.of());
+        when(splashResolver.resolve(any(), any(Instant.class))).thenReturn(List.of());
+
+        Instant before = Instant.now();
+        splashService.getPool();
+        Instant after = Instant.now();
+
+        ArgumentCaptor<Instant> resolvedAt = ArgumentCaptor.forClass(Instant.class);
+        verify(splashResolver).resolve(any(), resolvedAt.capture());
+        assertThat(resolvedAt.getValue()).isBetween(before, after);
     }
 }

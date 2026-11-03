@@ -33,7 +33,7 @@ import java.util.UUID;
 @RequestMapping("/api/v1/admin/splashes")
 @RequiredArgsConstructor
 @SecurityRequirement(name = "AdminKey")
-@Tag(name = "Splash Admin", description = "Endpoints for the design team to list and update splash videos, guarded by the X-Admin-Key header")
+@Tag(name = "Splash Admin", description = "Endpoints for the design team to upload, list and update splash videos, guarded by the X-Admin-Key header")
 public class AdminSplashController {
 
     private final AdminSplashService adminSplashService;
