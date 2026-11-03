@@ -7,6 +7,11 @@ import dev.slethware.strollsplash.service.splash.SplashService;
 import dev.slethware.strollsplash.utility.ApiResponseUtil;
 import dev.slethware.strollsplash.utility.ChecksumUtil;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -29,11 +34,22 @@ public class SplashController {
     @GetMapping
     @Operation(
             summary = "Get the splash video pool",
-            description = "Returns the videos the client may play right now. A live event replaces the normal rotation, and pinned videos narrow it. The client picks one at random. The response is the same for every caller, so it carries Cache-Control and an ETag, and a matching If-None-Match gets 304 Not Modified. No authentication."
+            description = "Returns the videos the client may play right now. A live event replaces the normal rotation, and pinned videos narrow it. The client picks one at random. The response is the same for every caller, so it carries Cache-Control and an ETag, and a matching If-None-Match gets 304 Not Modified. No authentication.",
+            parameters = @Parameter(name = "If-None-Match", in = ParameterIn.HEADER,
+                    description = "ETag from an earlier response, a match returns 304 Not Modified with no body")
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Splashes retrieved successfully, an empty list means the client plays its bundled default"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "304", description = "The pool has not changed since the ETag in If-None-Match, no body")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Splashes retrieved successfully, an empty list means the client plays its bundled default",
+                    headers = {
+                            @Header(name = "ETag", description = "Strong ETag of the pool, a quoted SHA-256 hex digest", schema = @Schema(type = "string")),
+                            @Header(name = "Cache-Control", description = "public, with max-age taken from splash.http.max-age (300 seconds by default)", schema = @Schema(type = "string"))
+                    }),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "304", description = "The pool has not changed since the ETag in If-None-Match, no body",
+                    headers = {
+                            @Header(name = "ETag", description = "Strong ETag of the pool, a quoted SHA-256 hex digest", schema = @Schema(type = "string")),
+                            @Header(name = "Cache-Control", description = "public, with max-age taken from splash.http.max-age (300 seconds by default)", schema = @Schema(type = "string"))
+                    },
+                    content = @Content)
     })
     public ResponseEntity<ApiResponse<List<SplashResponse>>> getSplashes() {
         List<SplashResponse> pool = splashService.getPool();
