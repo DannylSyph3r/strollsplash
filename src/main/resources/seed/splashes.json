@@ -1,0 +1,90 @@
+[
+  {
+    "title": "Original",
+    "kind": "STANDARD",
+    "objectKey": "splashes/seed-01-original.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": null,
+    "endsAt": null
+  },
+  {
+    "title": "Warm sunset",
+    "kind": "STANDARD",
+    "objectKey": "splashes/seed-02-sunset.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": null,
+    "endsAt": null
+  },
+  {
+    "title": "Cool teal",
+    "kind": "STANDARD",
+    "objectKey": "splashes/seed-03-teal.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": null,
+    "endsAt": null
+  },
+  {
+    "title": "Violet night",
+    "kind": "STANDARD",
+    "objectKey": "splashes/seed-04-violet.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": null,
+    "endsAt": null
+  },
+  {
+    "title": "Slow push-in",
+    "kind": "STANDARD",
+    "objectKey": "splashes/seed-05-push-in.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": null,
+    "endsAt": null
+  },
+  {
+    "title": "Desaturated film grain",
+    "kind": "STANDARD",
+    "objectKey": "splashes/seed-06-film-grain.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": null,
+    "endsAt": null
+  },
+  {
+    "title": "Halloween 2026",
+    "kind": "EVENT",
+    "objectKey": "splashes/seed-07-halloween.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": "2026-10-30T00:00:00Z",
+    "endsAt": "2026-11-01T00:00:00Z"
+  },
+  {
+    "title": "Christmas 2026",
+    "kind": "EVENT",
+    "objectKey": "splashes/seed-08-christmas.mp4",
+    "checksum": "PLACEHOLDER_SHA256",
+    "sizeBytes": 0,
+    "active": true,
+    "pinned": false,
+    "startsAt": "2026-12-24T00:00:00Z",
+    "endsAt": "2026-12-27T00:00:00Z"
+  }
+]
