@@ -1,7 +1,9 @@
 package dev.slethware.strollsplash.exception;
 
+import dev.slethware.strollsplash.config.SplashProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -27,6 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // Boot's test type filter hides controllers nested in test classes from scanning, so import it
 @WebMvcTest(controllers = GlobalExceptionHandlerTest.ThrowingController.class)
 @Import(GlobalExceptionHandlerTest.ThrowingController.class)
+// Slices auto-include the admin interceptor, which needs SplashProperties
+@EnableConfigurationProperties(SplashProperties.class)
 class GlobalExceptionHandlerTest {
 
     enum Mode {
