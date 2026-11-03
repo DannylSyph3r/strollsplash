@@ -13,7 +13,6 @@ public class ApiResponse<T> {
 
     private String message;
     private Integer statusCode;
-    // Wrapper type keeps the JSON key "isSuccessful"; a primitive would serialise as "successful"
     private Boolean isSuccessful;
     private T data;
 }

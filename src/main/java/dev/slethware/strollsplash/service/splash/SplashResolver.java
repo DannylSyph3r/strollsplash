@@ -15,7 +15,6 @@ public class SplashResolver {
 
         List<SplashVideo> events = live.stream()
                 .filter(v -> v.getKind() == SplashKind.EVENT)
-                // Event rows need both timestamps, so one with a gap is treated as not live
                 .filter(v -> v.getStartsAt() != null && v.getEndsAt() != null)
                 .filter(v -> !now.isBefore(v.getStartsAt()) && now.isBefore(v.getEndsAt()))
                 .toList();
@@ -24,7 +23,6 @@ public class SplashResolver {
                 ? events
                 : live.stream().filter(v -> v.getKind() == SplashKind.STANDARD).toList();
 
-        // Pinned rows narrow the tier but never lift a standard video above a live event
         List<SplashVideo> pinned = tier.stream().filter(SplashVideo::isPinned).toList();
         return pinned.isEmpty() ? tier : pinned;
     }

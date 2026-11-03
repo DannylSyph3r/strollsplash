@@ -53,7 +53,6 @@ public class AdminSplashServiceImpl implements AdminSplashService {
             throw new BadRequestException("Failed to read uploaded file");
         }
 
-        // The key is generated here and never taken from the client's file name
         String key = "splashes/" + UUID.randomUUID() + ".mp4";
 
         // Storage first, so a failed upload leaves no row pointing at a missing object
@@ -92,7 +91,6 @@ public class AdminSplashServiceImpl implements AdminSplashService {
         SplashVideo video = splashVideoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Splash video not found"));
 
-        // A field that is null in the request means no change, so each rule runs on the merged result
         SplashKind kind = request.getKind() != null ? request.getKind() : video.getKind();
         String title = request.getTitle() != null ? request.getTitle() : video.getTitle();
 

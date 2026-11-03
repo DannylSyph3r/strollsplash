@@ -41,7 +41,6 @@ public class SplashValidator {
         return violations;
     }
 
-    // The admin service and the seeder both go through here so a stored row is always valid
     public void validateOrThrow(String title, SplashKind kind, Instant startsAt, Instant endsAt) {
         List<String> violations = validate(title, kind, startsAt, endsAt);
         if (!violations.isEmpty()) {

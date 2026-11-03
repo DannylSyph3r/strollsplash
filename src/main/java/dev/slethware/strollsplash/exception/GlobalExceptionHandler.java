@@ -46,7 +46,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return errorResponse(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
-    // Our own message is returned on purpose: it is authored here and helps the admin
     @ExceptionHandler(InternalServerException.class)
     public ResponseEntity<Object> handleInternalServerException(InternalServerException e) {
         log.error("Internal server error: {}", e.getMessage(), e);
@@ -96,7 +95,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return errorResponse(status, headers, "Payload Too Large", "File exceeds the maximum upload size");
     }
 
-    // Every other framework exception (unknown route, wrong method, missing part) keeps the status it arrived with
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
             Exception ex, Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {

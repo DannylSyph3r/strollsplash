@@ -12,10 +12,8 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "storage")
 public class StorageProperties {
 
-    // Blank means AWS S3, a value points the client at R2 or another S3-compatible store
     private String endpoint = "";
 
-    // R2 ignores the region but the SDK requires one
     private String region = "us-east-1";
 
     @NotBlank
