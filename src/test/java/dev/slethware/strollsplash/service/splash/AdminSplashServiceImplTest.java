@@ -1,0 +1,276 @@
+package dev.slethware.strollsplash.service.splash;
+
+import dev.slethware.strollsplash.dto.request.UpdateSplashRequest;
+import dev.slethware.strollsplash.dto.response.AdminSplashResponse;
+import dev.slethware.strollsplash.entity.SplashVideo;
+import dev.slethware.strollsplash.enums.SplashKind;
+import dev.slethware.strollsplash.exception.BadRequestException;
+import dev.slethware.strollsplash.exception.ResourceNotFoundException;
+import dev.slethware.strollsplash.repository.SplashVideoRepository;
+import dev.slethware.strollsplash.service.storage.StorageService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class AdminSplashServiceImplTest {
+
+    private static final UUID ID = UUID.fromString("7d9c3f0e-5b1a-4c55-9d3e-0a1f6b2c8e11");
+    private static final Instant START = Instant.parse("2026-12-24T00:00:00Z");
+    private static final Instant END = Instant.parse("2026-12-27T00:00:00Z");
+
+    @Mock
+    private SplashVideoRepository repository;
+
+    @Mock
+    private SplashPoolCache splashPoolCache;
+
+    @Mock
+    private StorageService storageService;
+
+    private AdminSplashServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        service = new AdminSplashServiceImpl(repository, new SplashValidator(), splashPoolCache, storageService);
+        lenient().when(repository.save(any(SplashVideo.class))).thenAnswer(call -> call.getArgument(0));
+        lenient().when(storageService.buildPublicUrl(any())).thenAnswer(call -> "https://cdn.test/" + call.getArgument(0));
+    }
+
+    private SplashVideo standardRow() {
+        return SplashVideo.builder().id(ID).title("Original").kind(SplashKind.STANDARD)
+                .objectKey("splashes/a.mp4").checksum("sum").sizeBytes(10L).active(true).build();
+    }
+
+    private SplashVideo eventRow() {
+        return SplashVideo.builder().id(ID).title("Christmas").kind(SplashKind.EVENT)
+                .objectKey("splashes/c.mp4").checksum("sum").sizeBytes(10L).active(true)
+                .startsAt(START).endsAt(END).build();
+    }
+
+    private UpdateSplashRequest request() {
+        return new UpdateSplashRequest();
+    }
+
+    private void rowExists(SplashVideo row) {
+        when(repository.findById(ID)).thenReturn(Optional.of(row));
+    }
+
+    @Test
+    void listMapsEveryRowAndKeepsTheRepositoryOrder() {
+        SplashVideo newer = standardRow();
+        newer.setTitle("newer");
+        SplashVideo older = eventRow();
+        older.setTitle("older");
+        when(repository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(newer, older));
+
+        List<AdminSplashResponse> all = service.getAllSplashes();
+
+        assertThat(all).extracting(AdminSplashResponse::getTitle).containsExactly("newer", "older");
+        assertThat(all.getFirst().getUrl()).isEqualTo("https://cdn.test/splashes/a.mp4");
+        assertThat(all.get(1).getStartsAt()).isEqualTo(START);
+    }
+
+    @Test
+    void pinnedOnlyChangesPinned() {
+        SplashVideo row = eventRow();
+        rowExists(row);
+        UpdateSplashRequest request = request();
+        request.setPinned(true);
+
+        AdminSplashResponse response = service.updateSplash(ID, request);
+
+        assertThat(response.isPinned()).isTrue();
+        assertThat(response.getTitle()).isEqualTo("Christmas");
+        assertThat(response.getKind()).isEqualTo(SplashKind.EVENT);
+        assertThat(response.isActive()).isTrue();
+        assertThat(response.getStartsAt()).isEqualTo(START);
+        assertThat(response.getEndsAt()).isEqualTo(END);
+    }
+
+    @Test
+    void killSwitchOnAnEventNeedsNoTimestamps() {
+        rowExists(eventRow());
+        UpdateSplashRequest request = request();
+        request.setActive(false);
+
+        AdminSplashResponse response = service.updateSplash(ID, request);
+
+        assertThat(response.isActive()).isFalse();
+        assertThat(response.getStartsAt()).isEqualTo(START);
+        assertThat(response.getEndsAt()).isEqualTo(END);
+    }
+
+    @Test
+    void switchingAnEventToStandardClearsTheWindow() {
+        rowExists(eventRow());
+        UpdateSplashRequest request = request();
+        request.setKind(SplashKind.STANDARD);
+
+        AdminSplashResponse response = service.updateSplash(ID, request);
+
+        assertThat(response.getKind()).isEqualTo(SplashKind.STANDARD);
+        assertThat(response.getStartsAt()).isNull();
+        assertThat(response.getEndsAt()).isNull();
+    }
+
+    @Test
+    void switchingAnEventToStandardWhileSendingAWindowIsRejected() {
+        rowExists(eventRow());
+        UpdateSplashRequest request = request();
+        request.setKind(SplashKind.STANDARD);
+        request.setStartsAt(START);
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("startsAt and endsAt must not be set when kind is STANDARD");
+    }
+
+    @Test
+    void switchingStandardToEventWithoutTimestampsGetsBothRequiredMessages() {
+        rowExists(standardRow());
+        UpdateSplashRequest request = request();
+        request.setKind(SplashKind.EVENT);
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("startsAt is required when kind is EVENT; endsAt is required when kind is EVENT");
+    }
+
+    @Test
+    void switchingStandardToEventWithBothTimestampsWorks() {
+        rowExists(standardRow());
+        UpdateSplashRequest request = request();
+        request.setKind(SplashKind.EVENT);
+        request.setStartsAt(START);
+        request.setEndsAt(END);
+
+        AdminSplashResponse response = service.updateSplash(ID, request);
+
+        assertThat(response.getKind()).isEqualTo(SplashKind.EVENT);
+        assertThat(response.getStartsAt()).isEqualTo(START);
+        assertThat(response.getEndsAt()).isEqualTo(END);
+    }
+
+    @Test
+    void endsAtBeforeTheStoredStartsAtIsRejected() {
+        rowExists(eventRow());
+        UpdateSplashRequest request = request();
+        request.setEndsAt(START.minusSeconds(60));
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("endsAt must be after startsAt");
+    }
+
+    @Test
+    void startsAtOnAStandardRowIsRejected() {
+        rowExists(standardRow());
+        UpdateSplashRequest request = request();
+        request.setStartsAt(START);
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("startsAt and endsAt must not be set when kind is STANDARD");
+    }
+
+    @Test
+    void blankTitleIsRejected() {
+        rowExists(standardRow());
+        UpdateSplashRequest request = request();
+        request.setTitle("  ");
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("title must not be blank");
+    }
+
+    @Test
+    void emptyRequestIsRejectedBeforeTheRowIsLoaded() {
+        assertThatThrownBy(() -> service.updateSplash(ID, request()))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("At least one field must be provided");
+
+        verifyNoInteractions(repository, splashPoolCache);
+    }
+
+    @Test
+    void unknownIdGives404() {
+        when(repository.findById(ID)).thenReturn(Optional.empty());
+        UpdateSplashRequest request = request();
+        request.setPinned(true);
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Splash video not found");
+    }
+
+    @Test
+    void nullFieldsBehaveLikeAbsentOnes() {
+        rowExists(eventRow());
+        UpdateSplashRequest request = request();
+        request.setEndsAt(null);
+        request.setTitle(null);
+        request.setPinned(true);
+
+        AdminSplashResponse response = service.updateSplash(ID, request);
+
+        assertThat(response.getEndsAt()).isEqualTo(END);
+        assertThat(response.getTitle()).isEqualTo("Christmas");
+    }
+
+    @Test
+    void cacheIsInvalidatedAfterTheSave() {
+        rowExists(standardRow());
+        UpdateSplashRequest request = request();
+        request.setActive(false);
+
+        service.updateSplash(ID, request);
+
+        InOrder order = inOrder(repository, splashPoolCache);
+        order.verify(repository).save(any(SplashVideo.class));
+        order.verify(splashPoolCache).invalidate();
+    }
+
+    @Test
+    void cacheIsNotInvalidatedWhenValidationFails() {
+        rowExists(standardRow());
+        UpdateSplashRequest request = request();
+        request.setStartsAt(START);
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request)).isInstanceOf(BadRequestException.class);
+
+        verify(repository, never()).save(any());
+        verify(splashPoolCache, never()).invalidate();
+    }
+
+    @Test
+    void cacheIsNotInvalidatedWhenTheSaveFails() {
+        rowExists(standardRow());
+        when(repository.save(any(SplashVideo.class))).thenThrow(new IllegalStateException("db down"));
+        UpdateSplashRequest request = request();
+        request.setPinned(true);
+
+        assertThatThrownBy(() -> service.updateSplash(ID, request)).isInstanceOf(IllegalStateException.class);
+
+        verify(splashPoolCache, never()).invalidate();
+    }
+}
