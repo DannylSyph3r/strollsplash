@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: strollsplash-postgres
+    environment:
+      POSTGRES_DB: strollsplash
+      POSTGRES_USER: ${DB_USERNAME:-strollsplash}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - strollsplash-pgdata:/var/lib/postgresql/data
+
+volumes:
+  strollsplash-pgdata:
