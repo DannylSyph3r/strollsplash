@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.time.Instant;
 
@@ -67,6 +68,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/upload-too-large")
         void uploadTooLarge() {
             throw new MaxUploadSizeExceededException(1024);
+        }
+
+        @GetMapping("/broken-multipart")
+        void brokenMultipart() {
+            throw new MultipartException("Failed to parse multipart servlet request");
         }
 
         @GetMapping("/unexpected")
@@ -179,6 +185,12 @@ class GlobalExceptionHandlerTest {
     void oversizeUploadGives413() throws Exception {
         assertError(mockMvc.perform(get("/test/upload-too-large")),
                 413, "Payload Too Large", "File exceeds the maximum upload size");
+    }
+
+    @Test
+    void malformedMultipartGives400NotA500() throws Exception {
+        assertError(mockMvc.perform(get("/test/broken-multipart")),
+                400, "Bad Request", "Request is not valid multipart/form-data");
     }
 
     @Test

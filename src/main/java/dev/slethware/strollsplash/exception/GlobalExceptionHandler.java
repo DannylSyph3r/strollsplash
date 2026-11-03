@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import tools.jackson.databind.exc.InvalidFormatException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
@@ -56,6 +57,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Object> handleUnexpectedException(Exception e) {
         log.error("Unexpected error occurred: {}", e.getMessage(), e);
         return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, UNEXPECTED_ERROR);
+    }
+
+    // MaxUploadSizeExceededException is a subclass and keeps its own 413 handler below, the closest match wins
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<Object> handleMultipartException(MultipartException e) {
+        log.warn("Multipart request rejected: {}", e.getMessage());
+        return errorResponse(HttpStatus.BAD_REQUEST, "Request is not valid multipart/form-data");
     }
 
     @Override
