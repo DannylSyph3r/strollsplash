@@ -1,5 +1,6 @@
 package dev.slethware.strollsplash.service.storage;
 
+import dev.slethware.strollsplash.config.StorageProperties;
 import dev.slethware.strollsplash.exception.InternalServerException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -7,7 +8,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -25,13 +25,15 @@ class StorageServiceImplTest {
     @Mock
     private S3Client s3Client;
 
+    private StorageProperties properties;
     private StorageServiceImpl storageService;
 
     @BeforeEach
     void setUp() {
-        storageService = new StorageServiceImpl(s3Client);
-        ReflectionTestUtils.setField(storageService, "bucketName", "splash-bucket");
-        ReflectionTestUtils.setField(storageService, "publicUrl", "https://cdn.test");
+        properties = new StorageProperties();
+        properties.setBucketName("splash-bucket");
+        properties.setPublicUrl("https://cdn.test");
+        storageService = new StorageServiceImpl(s3Client, properties);
     }
 
     @Test
@@ -41,7 +43,7 @@ class StorageServiceImplTest {
 
     @Test
     void buildPublicUrlIgnoresATrailingSlashOnTheBase() {
-        ReflectionTestUtils.setField(storageService, "publicUrl", "https://cdn.test/");
+        properties.setPublicUrl("https://cdn.test/");
 
         assertThat(storageService.buildPublicUrl("splashes/a.mp4")).isEqualTo("https://cdn.test/splashes/a.mp4");
     }

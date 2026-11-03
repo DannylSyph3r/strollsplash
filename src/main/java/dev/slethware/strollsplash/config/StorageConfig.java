@@ -1,6 +1,6 @@
 package dev.slethware.strollsplash.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -12,31 +12,20 @@ import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import java.net.URI;
 
 @Configuration
+@RequiredArgsConstructor
 public class StorageConfig {
 
-    @Value("${storage.endpoint}")
-    private String endpoint;
-
-    @Value("${storage.region}")
-    private String region;
-
-    @Value("${storage.access-key-id}")
-    private String accessKeyId;
-
-    @Value("${storage.secret-access-key}")
-    private String secretAccessKey;
+    private final StorageProperties properties;
 
     @Bean
     public S3Client s3Client() {
         S3ClientBuilder builder = S3Client.builder()
-                // R2 ignores the region but the SDK requires one
-                .region(Region.of(region))
+                .region(Region.of(properties.getRegion()))
                 .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKeyId, secretAccessKey)));
+                        AwsBasicCredentials.create(properties.getAccessKeyId(), properties.getSecretAccessKey())));
 
-        // A blank endpoint means AWS S3, a value points the client at R2 or another S3-compatible store
-        if (!endpoint.isBlank()) {
-            builder.endpointOverride(URI.create(endpoint));
+        if (!properties.getEndpoint().isBlank()) {
+            builder.endpointOverride(URI.create(properties.getEndpoint()));
         }
         return builder.build();
     }

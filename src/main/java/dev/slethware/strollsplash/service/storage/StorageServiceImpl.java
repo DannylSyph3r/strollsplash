@@ -1,9 +1,9 @@
 package dev.slethware.strollsplash.service.storage;
 
+import dev.slethware.strollsplash.config.StorageProperties;
 import dev.slethware.strollsplash.exception.InternalServerException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -16,17 +16,12 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 public class StorageServiceImpl implements StorageService {
 
     private final S3Client s3Client;
-
-    @Value("${storage.bucket-name}")
-    private String bucketName;
-
-    @Value("${storage.public-url}")
-    private String publicUrl;
+    private final StorageProperties properties;
 
     @Override
     public void upload(String key, String contentType, byte[] data) {
         PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(bucketName)
+                .bucket(properties.getBucketName())
                 .key(key)
                 .contentType(contentType)
                 .contentLength((long) data.length)
@@ -43,6 +38,7 @@ public class StorageServiceImpl implements StorageService {
 
     @Override
     public String buildPublicUrl(String key) {
+        String publicUrl = properties.getPublicUrl();
         String base = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
         return base + "/" + key;
     }
