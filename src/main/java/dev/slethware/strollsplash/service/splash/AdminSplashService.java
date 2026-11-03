@@ -12,8 +12,6 @@ import java.util.UUID;
 public interface AdminSplashService {
 
     AdminSplashResponse uploadSplash(MultipartFile file, String title, SplashKind kind, Instant startsAt, Instant endsAt);
-
     List<AdminSplashResponse> getAllSplashes();
-
     AdminSplashResponse updateSplash(UUID id, UpdateSplashRequest request);
 }
