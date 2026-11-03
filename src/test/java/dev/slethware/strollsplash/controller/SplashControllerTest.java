@@ -23,7 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = SplashController.class)
+// A value other than the 5 minute default, so the test proves the header reads the property
+@WebMvcTest(controllers = SplashController.class, properties = "splash.http.max-age=90s")
 @EnableConfigurationProperties(SplashProperties.class)
 class SplashControllerTest {
 
@@ -72,7 +73,7 @@ class SplashControllerTest {
         when(splashService.getPool()).thenReturn(pool);
 
         mockMvc.perform(get(PATH))
-                .andExpect(header().string("Cache-Control", "max-age=300, public"))
+                .andExpect(header().string("Cache-Control", "max-age=90, public"))
                 .andExpect(header().string("ETag", quoted(pool)));
     }
 
@@ -84,7 +85,7 @@ class SplashControllerTest {
         mockMvc.perform(get(PATH).header("If-None-Match", quoted(pool)))
                 .andExpect(status().isNotModified())
                 .andExpect(content().string(""))
-                .andExpect(header().string("Cache-Control", "max-age=300, public"))
+                .andExpect(header().string("Cache-Control", "max-age=90, public"))
                 .andExpect(header().string("ETag", quoted(pool)));
     }
 
