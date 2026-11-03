@@ -3,12 +3,16 @@ package dev.slethware.strollsplash.controller;
 import dev.slethware.strollsplash.dto.request.UpdateSplashRequest;
 import dev.slethware.strollsplash.dto.response.AdminSplashResponse;
 import dev.slethware.strollsplash.dto.response.ApiResponse;
+import dev.slethware.strollsplash.dto.response.ErrorResponse;
 import dev.slethware.strollsplash.enums.SplashKind;
 import dev.slethware.strollsplash.service.splash.AdminSplashService;
 import dev.slethware.strollsplash.utility.ApiResponseUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Encoding;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.media.SchemaProperty;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -41,27 +45,38 @@ public class AdminSplashController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(
             summary = "Upload a splash video",
-            description = "Uploads an mp4 to object storage and creates the row as inactive and unpinned, so it only reaches the app once switched on with PATCH. The server computes the SHA-256 and size and picks the storage key. kind defaults to STANDARD, and an EVENT needs startsAt and endsAt as ISO-8601 timestamps with an offset. Every violation is reported together in one message."
+            description = "Uploads an mp4 (content type video/mp4) to object storage and creates the row as inactive and unpinned, so it only reaches the app once switched on with PATCH. The server computes the SHA-256 and size and picks the storage key. kind defaults to STANDARD, and an EVENT needs startsAt and endsAt as ISO-8601 timestamps with an offset. Every violation is reported together in one message.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(
+                            mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                            schema = @Schema(type = "object", requiredProperties = {"file", "title"}),
+                            schemaProperties = {
+                                    @SchemaProperty(name = "file", schema = @Schema(type = "string", format = "binary", description = "The mp4 video, content type video/mp4")),
+                                    @SchemaProperty(name = "title", schema = @Schema(type = "string", maxLength = 120, description = "Admin label, at most 120 characters")),
+                                    @SchemaProperty(name = "kind", schema = @Schema(type = "string", allowableValues = {"STANDARD", "EVENT"}, defaultValue = "STANDARD", description = "STANDARD (default) or EVENT")),
+                                    @SchemaProperty(name = "startsAt", schema = @Schema(type = "string", format = "date-time", description = "Event start, ISO-8601 with an offset, required for EVENT")),
+                                    @SchemaProperty(name = "endsAt", schema = @Schema(type = "string", format = "date-time", description = "Event end, ISO-8601 with an offset, required for EVENT"))
+                            },
+                            encoding = @Encoding(name = "file", contentType = "video/mp4")))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Splash video uploaded successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Missing file, not video/mp4, blank or over-long title, bad kind or timestamps, all violations are joined in one message"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or wrong X-Admin-Key"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "413", description = "File exceeds the maximum upload size"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Failed to upload video to storage")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Missing file, not video/mp4, blank or over-long title, bad kind or timestamps, all violations are joined in one message",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or wrong X-Admin-Key",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "413", description = "File exceeds the maximum upload size",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Failed to upload video to storage",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<ApiResponse<AdminSplashResponse>> uploadSplash(
-            @Parameter(description = "The mp4 video, content type video/mp4", required = true,
-                    content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE))
-            @RequestParam(value = "file", required = false) MultipartFile file,
-            @Parameter(description = "Admin label, at most 120 characters", required = true)
-            @RequestParam(value = "title", required = false) String title,
-            @Parameter(description = "STANDARD (default) or EVENT")
-            @RequestParam(value = "kind", defaultValue = "STANDARD") SplashKind kind,
-            @Parameter(description = "Event start, ISO-8601 with an offset, required for EVENT")
-            @RequestParam(value = "startsAt", required = false) Instant startsAt,
-            @Parameter(description = "Event end, ISO-8601 with an offset, required for EVENT")
-            @RequestParam(value = "endsAt", required = false) Instant endsAt) {
+            @Parameter(hidden = true) @RequestParam(value = "file", required = false) MultipartFile file,
+            @Parameter(hidden = true) @RequestParam(value = "title", required = false) String title,
+            @Parameter(hidden = true) @RequestParam(value = "kind", defaultValue = "STANDARD") SplashKind kind,
+            @Parameter(hidden = true) @RequestParam(value = "startsAt", required = false) Instant startsAt,
+            @Parameter(hidden = true) @RequestParam(value = "endsAt", required = false) Instant endsAt) {
 
         // Every part is optional at the framework level so the service can report all violations together
         AdminSplashResponse response = adminSplashService.uploadSplash(file, title, kind, startsAt, endsAt);
@@ -79,7 +94,8 @@ public class AdminSplashController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Splash videos retrieved successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or wrong X-Admin-Key")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or wrong X-Admin-Key",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<ApiResponse<List<AdminSplashResponse>>> getAllSplashes() {
         List<AdminSplashResponse> splashes = adminSplashService.getAllSplashes();
@@ -97,9 +113,12 @@ public class AdminSplashController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Splash video updated successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "No fields given, unknown field, bad value or a violated rule, all violations are joined in one message"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or wrong X-Admin-Key"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Splash video not found")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "No fields given, unknown field, bad value or a violated rule, all violations are joined in one message",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or wrong X-Admin-Key",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Splash video not found",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<ApiResponse<AdminSplashResponse>> updateSplash(
             @Parameter(description = "Splash video ID", required = true)
