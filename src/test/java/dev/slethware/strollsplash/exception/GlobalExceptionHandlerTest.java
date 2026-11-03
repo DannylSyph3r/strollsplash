@@ -15,8 +15,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.time.Instant;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,7 +33,7 @@ class GlobalExceptionHandlerTest {
         STANDARD, EVENT
     }
 
-    record Body(String name, Mode mode) {
+    record Body(String name, Mode mode, Instant at) {
     }
 
     @RestController
@@ -111,14 +115,9 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void badEnumValueInBodyGives400WithAReadableMessage() throws Exception {
-        postJson("/test/body", "{\"mode\": \"HOLIDAY\"}")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.allOf(
-                        org.hamcrest.Matchers.containsString("HOLIDAY"),
-                        org.hamcrest.Matchers.containsString("STANDARD"),
-                        org.hamcrest.Matchers.containsString("EVENT"))));
+    void badEnumValueInBodyGives400ListingTheAllowedValues() throws Exception {
+        assertError(postJson("/test/body", "{\"mode\": \"HOLIDAY\"}"), 400, "Bad Request",
+                "Invalid value 'HOLIDAY' for mode. Allowed values: STANDARD, EVENT");
     }
 
     @Test
@@ -141,6 +140,35 @@ class GlobalExceptionHandlerTest {
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.error").value("Method Not Allowed"))
                 .andExpect(jsonPath("$.statusCode").value(405));
+    }
+
+    @Test
+    void wrongHttpMethodKeepsTheAllowHeader() throws Exception {
+        mockMvc.perform(post("/test/bad-request"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().exists("Allow"));
+    }
+
+    @Test
+    void errorBodyStaysJsonWhenTheClientAcceptsOnlyHtml() throws Exception {
+        mockMvc.perform(get("/test/bad-request").accept(MediaType.TEXT_HTML))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.message").value("title must not be blank"));
+    }
+
+    @Test
+    void unknownRouteStaysJsonWhenTheClientAcceptsOnlyHtml() throws Exception {
+        mockMvc.perform(get("/test/nowhere").accept(MediaType.TEXT_HTML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.statusCode").value(404));
+    }
+
+    @Test
+    void badTimestampInBodyGives400WithoutParserInternals() throws Exception {
+        assertError(postJson("/test/body", "{\"at\": \"tomorrow\"}"), 400, "Bad Request",
+                "Invalid value 'tomorrow' for at");
     }
 
     @Test

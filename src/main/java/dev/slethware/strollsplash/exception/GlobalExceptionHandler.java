@@ -6,13 +6,14 @@ import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import tools.jackson.databind.exc.InvalidFormatException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
@@ -64,7 +65,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         String message = switch (ex.getCause()) {
             case UnrecognizedPropertyException e -> "Unknown field '" + e.getPropertyName() + "'";
-            case InvalidFormatException e -> e.getOriginalMessage();
+            case InvalidFormatException e -> invalidValueMessage(e.getValue(), fieldName(e), e.getTargetType());
             case null, default -> "Request body is not valid JSON";
         };
         return errorResponse(HttpStatus.BAD_REQUEST, message);
@@ -76,11 +77,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         log.warn("Type mismatch: {}", ex.getMessage());
 
         String name = ex instanceof MethodArgumentTypeMismatchException e ? e.getName() : ex.getPropertyName();
-        Class<?> required = ex.getRequiredType();
-        String message = required != null && required.isEnum()
-                ? "Invalid value '" + ex.getValue() + "' for " + name + ". Allowed values: " + allowedValues(required)
-                : "Invalid value for " + name;
-        return errorResponse(HttpStatus.BAD_REQUEST, message);
+        return errorResponse(HttpStatus.BAD_REQUEST, invalidValueMessage(ex.getValue(), name, ex.getRequiredType()));
     }
 
     @Override
@@ -88,7 +85,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             MaxUploadSizeExceededException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         log.warn("Upload too large: {}", ex.getMessage());
         // Spring 7 names 413 "Content Too Large", but the contract says "Payload Too Large"
-        return errorResponse(status, "Payload Too Large", "File exceeds the maximum upload size");
+        return errorResponse(status, headers, "Payload Too Large", "File exceeds the maximum upload size");
     }
 
     // Every other framework exception (unknown route, wrong method, missing part) keeps the status it arrived with
@@ -100,26 +97,45 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return errorResponse(statusCode, UNEXPECTED_ERROR);
         }
         log.warn("Request rejected: {}", ex.getMessage());
-        return errorResponse(statusCode, ex.getMessage());
+        // Headers carry what the status requires, such as Allow on a 405
+        return errorResponse(statusCode, headers, reasonPhrase(statusCode), ex.getMessage());
     }
 
-    private String allowedValues(Class<?> enumType) {
-        return Arrays.stream(enumType.getEnumConstants())
-                .map(Object::toString)
-                .collect(Collectors.joining(", "));
+    // Jackson's own text names Java classes and parser internals, so the message is built here instead
+    private String invalidValueMessage(Object value, String name, Class<?> type) {
+        String message = "Invalid value '" + value + "' for " + name;
+        if (type != null && type.isEnum()) {
+            message += ". Allowed values: " + Arrays.stream(type.getEnumConstants())
+                    .map(Object::toString)
+                    .collect(Collectors.joining(", "));
+        }
+        return message;
+    }
+
+    private String fieldName(InvalidFormatException e) {
+        return e.getPath().isEmpty() ? "request body" : e.getPath().getLast().getPropertyName();
     }
 
     private ResponseEntity<Object> errorResponse(HttpStatusCode status, String message) {
-        return errorResponse(status, HttpStatus.valueOf(status.value()).getReasonPhrase(), message);
+        return errorResponse(status, HttpHeaders.EMPTY, reasonPhrase(status), message);
     }
 
-    private ResponseEntity<Object> errorResponse(HttpStatusCode status, String error, String message) {
+    private ResponseEntity<Object> errorResponse(
+            HttpStatusCode status, HttpHeaders headers, String error, String message) {
         ErrorResponse response = ErrorResponse.builder()
                 .message(message)
                 .error(error)
                 .statusCode(status.value())
                 .build();
 
-        return ResponseEntity.status(status).body(response);
+        // Fixed content type so a client whose Accept header excludes JSON still gets the error shape
+        return ResponseEntity.status(status)
+                .headers(headers)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(response);
+    }
+
+    private String reasonPhrase(HttpStatusCode status) {
+        return HttpStatus.valueOf(status.value()).getReasonPhrase();
     }
 }
