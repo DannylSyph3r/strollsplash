@@ -8,11 +8,15 @@ import dev.slethware.strollsplash.exception.BadRequestException;
 import dev.slethware.strollsplash.exception.ResourceNotFoundException;
 import dev.slethware.strollsplash.repository.SplashVideoRepository;
 import dev.slethware.strollsplash.service.storage.StorageService;
+import dev.slethware.strollsplash.utility.ChecksumUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,10 +25,56 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminSplashServiceImpl implements AdminSplashService {
 
+    private static final String VIDEO_MP4 = "video/mp4";
+
     private final SplashVideoRepository splashVideoRepository;
     private final SplashValidator splashValidator;
     private final SplashPoolCache splashPoolCache;
     private final StorageService storageService;
+
+    @Override
+    public AdminSplashResponse uploadSplash(
+            MultipartFile file, String title, SplashKind kind, Instant startsAt, Instant endsAt) {
+        List<String> violations = new ArrayList<>(splashValidator.validate(title, kind, startsAt, endsAt));
+        if (file == null || file.isEmpty()) {
+            violations.add("file is required");
+        } else if (!VIDEO_MP4.equals(file.getContentType())) {
+            violations.add("Only video/mp4 files are accepted");
+        }
+        if (!violations.isEmpty()) {
+            throw new BadRequestException(String.join("; ", violations));
+        }
+
+        byte[] data;
+        try {
+            data = file.getBytes();
+        } catch (IOException e) {
+            log.error("Failed to read uploaded file: {}", e.getMessage(), e);
+            throw new BadRequestException("Failed to read uploaded file");
+        }
+
+        // The key is generated here and never taken from the client's file name
+        String key = "splashes/" + UUID.randomUUID() + ".mp4";
+
+        // Storage first, so a failed upload leaves no row pointing at a missing object
+        storageService.upload(key, VIDEO_MP4, data);
+
+        // A new row is inactive, and the cache only holds active rows, so there is nothing to invalidate
+        SplashVideo saved = splashVideoRepository.save(SplashVideo.builder()
+                .title(title)
+                .kind(kind)
+                .objectKey(key)
+                .checksum(ChecksumUtil.sha256Hex(data))
+                .sizeBytes((long) data.length)
+                .active(false)
+                .pinned(false)
+                .startsAt(startsAt)
+                .endsAt(endsAt)
+                .build());
+
+        log.info("Splash video uploaded: id={}, key={}", saved.getId(), key);
+        return toResponse(saved);
+    }
 
     @Override
     public List<AdminSplashResponse> getAllSplashes() {

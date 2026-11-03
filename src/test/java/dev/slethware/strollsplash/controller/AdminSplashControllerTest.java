@@ -5,6 +5,8 @@ import dev.slethware.strollsplash.config.WebConfig;
 import dev.slethware.strollsplash.dto.request.UpdateSplashRequest;
 import dev.slethware.strollsplash.dto.response.AdminSplashResponse;
 import dev.slethware.strollsplash.enums.SplashKind;
+import dev.slethware.strollsplash.exception.BadRequestException;
+import dev.slethware.strollsplash.exception.InternalServerException;
 import dev.slethware.strollsplash.exception.ResourceNotFoundException;
 import dev.slethware.strollsplash.interceptor.AdminKeyInterceptor;
 import dev.slethware.strollsplash.service.splash.AdminSplashService;
@@ -15,6 +17,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -27,10 +31,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -182,5 +188,93 @@ class AdminSplashControllerTest {
     void missingBodyGives400() throws Exception {
         mockMvc.perform(patch(PATH + "/" + ID).header(KEY_HEADER, KEY).contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest());
+    }
+
+    private MockMultipartFile video() {
+        return new MockMultipartFile("file", "clip.mp4", "video/mp4", new byte[]{1, 2, 3});
+    }
+
+    @Test
+    void uploadWithoutTheKeyGives401() throws Exception {
+        mockMvc.perform(multipart(PATH).file(video()).param("title", "Original"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(adminSplashService);
+    }
+
+    @Test
+    void uploadGives201WithTheRowAndDefaultsKindToStandard() throws Exception {
+        when(adminSplashService.uploadSplash(any(), any(), any(), any(), any())).thenReturn(response());
+
+        mockMvc.perform(multipart(PATH).file(video()).param("title", "Original").header(KEY_HEADER, KEY))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value("Splash video uploaded successfully"))
+                .andExpect(jsonPath("$.statusCode").value(201))
+                .andExpect(jsonPath("$.data.id").value(ID.toString()));
+
+        verify(adminSplashService).uploadSplash(any(), eq("Original"), eq(SplashKind.STANDARD), isNull(), isNull());
+    }
+
+    @Test
+    void uploadPassesEventTimestampsAsUtcInstants() throws Exception {
+        when(adminSplashService.uploadSplash(any(), any(), any(), any(), any())).thenReturn(response());
+
+        mockMvc.perform(multipart(PATH).file(video()).header(KEY_HEADER, KEY)
+                        .param("title", "Christmas").param("kind", "EVENT")
+                        .param("startsAt", "2026-12-24T01:00:00+01:00").param("endsAt", "2026-12-27T00:00:00Z"))
+                .andExpect(status().isCreated());
+
+        verify(adminSplashService).uploadSplash(any(), eq("Christmas"), eq(SplashKind.EVENT),
+                eq(Instant.parse("2026-12-24T00:00:00Z")), eq(Instant.parse("2026-12-27T00:00:00Z")));
+    }
+
+    @Test
+    void uploadWithNoPartsReachesTheServiceSoEveryViolationCanBeReported() throws Exception {
+        when(adminSplashService.uploadSplash(any(), any(), any(), any(), any()))
+                .thenThrow(new BadRequestException("title must not be blank; file is required"));
+
+        mockMvc.perform(multipart(PATH).header(KEY_HEADER, KEY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("title must not be blank; file is required"));
+
+        verify(adminSplashService).uploadSplash(isNull(), isNull(), eq(SplashKind.STANDARD), isNull(), isNull());
+    }
+
+    @Test
+    void uploadWithABadKindGives400ListingTheAllowedValues() throws Exception {
+        mockMvc.perform(multipart(PATH).file(video()).header(KEY_HEADER, KEY)
+                        .param("title", "Original").param("kind", "HOLIDAY"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid value 'HOLIDAY' for kind. Allowed values: STANDARD, EVENT"));
+    }
+
+    @Test
+    void uploadWithABadTimestampGives400() throws Exception {
+        mockMvc.perform(multipart(PATH).file(video()).header(KEY_HEADER, KEY)
+                        .param("title", "Christmas").param("kind", "EVENT").param("startsAt", "tomorrow"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid value 'tomorrow' for startsAt"));
+    }
+
+    @Test
+    void oversizeUploadGives413InTheErrorShape() throws Exception {
+        when(adminSplashService.uploadSplash(any(), any(), any(), any(), any()))
+                .thenThrow(new MaxUploadSizeExceededException(10_485_760L));
+
+        mockMvc.perform(multipart(PATH).file(video()).param("title", "Original").header(KEY_HEADER, KEY))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.message").value("File exceeds the maximum upload size"))
+                .andExpect(jsonPath("$.error").value("Payload Too Large"))
+                .andExpect(jsonPath("$.statusCode").value(413));
+    }
+
+    @Test
+    void storageFailureGives500WithItsOwnMessage() throws Exception {
+        when(adminSplashService.uploadSplash(any(), any(), any(), any(), any()))
+                .thenThrow(new InternalServerException("Failed to upload video to storage"));
+
+        mockMvc.perform(multipart(PATH).file(video()).param("title", "Original").header(KEY_HEADER, KEY))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("Failed to upload video to storage"));
     }
 }

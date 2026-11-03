@@ -13,8 +13,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
+import dev.slethware.strollsplash.exception.InternalServerException;
+import dev.slethware.strollsplash.utility.ChecksumUtil;
+
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -23,8 +30,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -272,5 +282,137 @@ class AdminSplashServiceImplTest {
         assertThatThrownBy(() -> service.updateSplash(ID, request)).isInstanceOf(IllegalStateException.class);
 
         verify(splashPoolCache, never()).invalidate();
+    }
+
+    private static final byte[] VIDEO_BYTES = {1, 2, 3, 4, 5};
+
+    private MockMultipartFile mp4() {
+        return new MockMultipartFile("file", "clip.mp4", "video/mp4", VIDEO_BYTES);
+    }
+
+    @Test
+    void uploadStoresChecksumAndSizeAndStartsInactiveAndUnpinned() {
+        service.uploadSplash(mp4(), "Original", SplashKind.STANDARD, null, null);
+
+        ArgumentCaptor<SplashVideo> saved = ArgumentCaptor.forClass(SplashVideo.class);
+        verify(repository).save(saved.capture());
+        assertThat(saved.getValue().getChecksum()).isEqualTo(ChecksumUtil.sha256Hex(VIDEO_BYTES));
+        assertThat(saved.getValue().getSizeBytes()).isEqualTo(5L);
+        assertThat(saved.getValue().isActive()).isFalse();
+        assertThat(saved.getValue().isPinned()).isFalse();
+        assertThat(saved.getValue().getTitle()).isEqualTo("Original");
+        assertThat(saved.getValue().getKind()).isEqualTo(SplashKind.STANDARD);
+    }
+
+    @Test
+    void uploadKeyIsGeneratedAndIgnoresTheClientFileName() {
+        service.uploadSplash(new MockMultipartFile("file", "../../evil.mp4", "video/mp4", VIDEO_BYTES),
+                "Original", SplashKind.STANDARD, null, null);
+
+        ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
+        verify(storageService).upload(key.capture(), eq("video/mp4"), eq(VIDEO_BYTES));
+        assertThat(key.getValue()).matches("splashes/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.mp4");
+    }
+
+    @Test
+    void uploadReturnsTheAdminResponseWithAPublicUrl() {
+        AdminSplashResponse response = service.uploadSplash(mp4(), "Original", SplashKind.STANDARD, null, null);
+
+        assertThat(response.getTitle()).isEqualTo("Original");
+        assertThat(response.getUrl()).startsWith("https://cdn.test/splashes/").endsWith(".mp4");
+        assertThat(response.isActive()).isFalse();
+    }
+
+    @Test
+    void uploadedEventKeepsItsWindow() {
+        AdminSplashResponse response = service.uploadSplash(mp4(), "Christmas", SplashKind.EVENT, START, END);
+
+        assertThat(response.getKind()).isEqualTo(SplashKind.EVENT);
+        assertThat(response.getStartsAt()).isEqualTo(START);
+        assertThat(response.getEndsAt()).isEqualTo(END);
+    }
+
+    @Test
+    void storageIsCalledBeforeTheRowIsSaved() {
+        service.uploadSplash(mp4(), "Original", SplashKind.STANDARD, null, null);
+
+        InOrder order = inOrder(storageService, repository);
+        order.verify(storageService).upload(any(), any(), any());
+        order.verify(repository).save(any(SplashVideo.class));
+    }
+
+    @Test
+    void storageFailureSavesNoRow() {
+        doThrow(new InternalServerException("Failed to upload video to storage"))
+                .when(storageService).upload(any(), any(), any());
+
+        assertThatThrownBy(() -> service.uploadSplash(mp4(), "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(InternalServerException.class)
+                .hasMessage("Failed to upload video to storage");
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void uploadDoesNotTouchThePoolCache() {
+        service.uploadSplash(mp4(), "Original", SplashKind.STANDARD, null, null);
+
+        verifyNoInteractions(splashPoolCache);
+    }
+
+    @Test
+    void wrongContentTypeIsRejectedAndNothingIsStored() {
+        MockMultipartFile text = new MockMultipartFile("file", "clip.mp4", "text/plain", VIDEO_BYTES);
+
+        assertThatThrownBy(() -> service.uploadSplash(text, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only video/mp4 files are accepted");
+
+        verifyNoInteractions(storageService, repository);
+    }
+
+    @Test
+    void missingFileIsRejected() {
+        assertThatThrownBy(() -> service.uploadSplash(null, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("file is required");
+    }
+
+    @Test
+    void emptyFileIsRejected() {
+        MockMultipartFile empty = new MockMultipartFile("file", "clip.mp4", "video/mp4", new byte[0]);
+
+        assertThatThrownBy(() -> service.uploadSplash(empty, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("file is required");
+    }
+
+    @Test
+    void eventWithoutBothTimestampsGetsTheTwoRequiredMessages() {
+        assertThatThrownBy(() -> service.uploadSplash(mp4(), "Christmas", SplashKind.EVENT, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("startsAt is required when kind is EVENT; endsAt is required when kind is EVENT");
+    }
+
+    @Test
+    void everyViolationIsReportedTogether() {
+        assertThatThrownBy(() -> service.uploadSplash(null, " ", SplashKind.EVENT, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("title must not be blank; startsAt is required when kind is EVENT; "
+                        + "endsAt is required when kind is EVENT; file is required");
+    }
+
+    @Test
+    void unreadableFileBecomesABadRequest() throws IOException {
+        MultipartFile broken = mock(MultipartFile.class);
+        when(broken.isEmpty()).thenReturn(false);
+        when(broken.getContentType()).thenReturn("video/mp4");
+        when(broken.getBytes()).thenThrow(new IOException("disk gone"));
+
+        assertThatThrownBy(() -> service.uploadSplash(broken, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Failed to read uploaded file");
+
+        verifyNoInteractions(storageService);
     }
 }
