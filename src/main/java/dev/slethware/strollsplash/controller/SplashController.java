@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/splashes")
 @RequiredArgsConstructor
@@ -53,6 +55,7 @@ public class SplashController {
     })
     public ResponseEntity<ApiResponse<List<SplashResponse>>> getSplashes() {
         List<SplashResponse> pool = splashService.getPool();
+        log.debug("splash.pool.served count={}", pool.size());
 
         // Spring turns a matching If-None-Match on this ETag into a 304 and keeps these headers
         return ResponseEntity.ok()

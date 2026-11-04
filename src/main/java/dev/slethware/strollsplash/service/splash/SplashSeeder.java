@@ -28,7 +28,9 @@ public class SplashSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws IOException {
-        if (splashVideoRepository.count() > 0) {
+        long existing = splashVideoRepository.count();
+        if (existing > 0) {
+            log.info("splash.seed.skipped rows={}", existing);
             return;
         }
 
@@ -47,6 +49,6 @@ public class SplashSeeder implements CommandLineRunner {
         }
         splashVideoRepository.saveAll(rows);
 
-        log.info("Seeded {} splash videos", rows.size());
+        log.info("splash.seed.done rows={}", rows.size());
     }
 }

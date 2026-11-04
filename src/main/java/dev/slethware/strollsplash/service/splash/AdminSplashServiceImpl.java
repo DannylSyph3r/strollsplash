@@ -71,7 +71,7 @@ public class AdminSplashServiceImpl implements AdminSplashService {
                 .endsAt(endsAt)
                 .build());
 
-        log.info("Splash video uploaded: id={}, key={}", saved.getId(), key);
+        log.info("splash.upload.done id={} key={} sizeBytes={}", saved.getId(), key, data.length);
         return toResponse(saved);
     }
 
@@ -122,7 +122,7 @@ public class AdminSplashServiceImpl implements AdminSplashService {
         // Save first, then invalidate, so a concurrent reader cannot cache the old row
         splashPoolCache.invalidate();
 
-        log.info("Splash video updated: id={}", id);
+        log.info("splash.update.done id={} kind={} active={} pinned={}", id, saved.getKind(), saved.isActive(), saved.isPinned());
         return toResponse(saved);
     }
 

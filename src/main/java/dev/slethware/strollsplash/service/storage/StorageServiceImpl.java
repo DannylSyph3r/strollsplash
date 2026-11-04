@@ -29,9 +29,9 @@ public class StorageServiceImpl implements StorageService {
 
         try {
             s3Client.putObject(request, RequestBody.fromBytes(data));
-            log.info("Video uploaded to storage: key={}", key);
+            log.info("splash.storage.upload key={} sizeBytes={}", key, data.length);
         } catch (SdkException e) {
-            log.error("Failed to upload video to storage: key={}", key, e);
+            log.error("splash.storage.upload.failed key={}", key, e);
             throw new InternalServerException("Failed to upload video to storage", e);
         }
     }

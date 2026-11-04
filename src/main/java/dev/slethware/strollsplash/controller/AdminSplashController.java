@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.media.SchemaProperty;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +34,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/admin/splashes")
 @RequiredArgsConstructor
@@ -78,6 +80,8 @@ public class AdminSplashController {
             @Parameter(hidden = true) @RequestParam(value = "startsAt", required = false) Instant startsAt,
             @Parameter(hidden = true) @RequestParam(value = "endsAt", required = false) Instant endsAt) {
 
+        log.info("splash.upload.request kind={} contentType={}", kind, file != null ? file.getContentType() : null);
+
         // Every part is optional at the framework level so the service can report all violations together
         AdminSplashResponse response = adminSplashService.uploadSplash(file, title, kind, startsAt, endsAt);
 
@@ -98,6 +102,7 @@ public class AdminSplashController {
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<ApiResponse<List<AdminSplashResponse>>> getAllSplashes() {
+        log.info("splash.list.request");
         List<AdminSplashResponse> splashes = adminSplashService.getAllSplashes();
 
         return new ResponseEntity<>(
@@ -125,6 +130,7 @@ public class AdminSplashController {
             @PathVariable UUID id,
             @RequestBody UpdateSplashRequest request) {
 
+        log.info("splash.update.request id={}", id);
         AdminSplashResponse response = adminSplashService.updateSplash(id, request);
 
         return new ResponseEntity<>(
