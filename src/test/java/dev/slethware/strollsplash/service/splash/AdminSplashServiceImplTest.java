@@ -339,7 +339,8 @@ class AdminSplashServiceImplTest {
         verify(splashPoolCache, never()).invalidate();
     }
 
-    private static final byte[] VIDEO_BYTES = {1, 2, 3, 4, 5};
+    // The start of a real mp4: a box size, then the type letters "ftyp", then the brand "isom"
+    private static final byte[] VIDEO_BYTES = {0, 0, 0, 32, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'};
 
     private MockMultipartFile mp4() {
         return new MockMultipartFile("file", "clip.mp4", "video/mp4", VIDEO_BYTES);
@@ -352,7 +353,7 @@ class AdminSplashServiceImplTest {
         ArgumentCaptor<SplashVideo> saved = ArgumentCaptor.forClass(SplashVideo.class);
         verify(repository).save(saved.capture());
         assertThat(saved.getValue().getChecksum()).isEqualTo(ChecksumUtil.sha256Hex(VIDEO_BYTES));
-        assertThat(saved.getValue().getSizeBytes()).isEqualTo(5L);
+        assertThat(saved.getValue().getSizeBytes()).isEqualTo((long) VIDEO_BYTES.length);
         assertThat(saved.getValue().isActive()).isFalse();
         assertThat(saved.getValue().isPinned()).isFalse();
         assertThat(saved.getValue().getTitle()).isEqualTo("Original");
@@ -427,6 +428,45 @@ class AdminSplashServiceImplTest {
     }
 
     @Test
+    void textBytesDeclaredAsVideoMp4AreRejectedAndNothingIsStored() {
+        MockMultipartFile fake = new MockMultipartFile("file", "clip.mp4", "video/mp4", "just some text, not a video".getBytes());
+
+        assertThatThrownBy(() -> service.uploadSplash(fake, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only video/mp4 files are accepted");
+
+        verifyNoInteractions(storageService, repository);
+    }
+
+    @Test
+    void aFileTooShortToHoldAnMp4HeaderIsRejected() {
+        MockMultipartFile tiny = new MockMultipartFile("file", "clip.mp4", "video/mp4", new byte[]{'f', 't', 'y', 'p'});
+
+        assertThatThrownBy(() -> service.uploadSplash(tiny, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only video/mp4 files are accepted");
+    }
+
+    @Test
+    void ftypAtTheStartInsteadOfBytesFourToEightIsRejected() {
+        MockMultipartFile misplaced = new MockMultipartFile("file", "clip.mp4", "video/mp4",
+                new byte[]{'f', 't', 'y', 'p', 0, 0, 0, 32, 'i', 's', 'o', 'm'});
+
+        assertThatThrownBy(() -> service.uploadSplash(misplaced, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only video/mp4 files are accepted");
+    }
+
+    @Test
+    void aWrongLabelAndWrongBytesGiveTheTypeMessageOnce() {
+        MockMultipartFile fake = new MockMultipartFile("file", "clip.mp4", "text/plain", "not a video".getBytes());
+
+        assertThatThrownBy(() -> service.uploadSplash(fake, "Original", SplashKind.STANDARD, null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only video/mp4 files are accepted");
+    }
+
+    @Test
     void missingFileIsRejected() {
         assertThatThrownBy(() -> service.uploadSplash(null, "Original", SplashKind.STANDARD, null, null))
                 .isInstanceOf(BadRequestException.class)
@@ -461,7 +501,6 @@ class AdminSplashServiceImplTest {
     void unreadableFileBecomesABadRequest() throws IOException {
         MultipartFile broken = mock(MultipartFile.class);
         when(broken.isEmpty()).thenReturn(false);
-        when(broken.getContentType()).thenReturn("video/mp4");
         when(broken.getBytes()).thenThrow(new IOException("disk gone"));
 
         assertThatThrownBy(() -> service.uploadSplash(broken, "Original", SplashKind.STANDARD, null, null))

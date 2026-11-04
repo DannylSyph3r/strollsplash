@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,21 +43,17 @@ public class AdminSplashServiceImpl implements AdminSplashService {
     public AdminSplashResponse uploadSplash(
             MultipartFile file, String title, SplashKind kind, Instant startsAt, Instant endsAt) {
         List<String> violations = new ArrayList<>(splashValidator.validate(title, kind, startsAt, endsAt));
+        byte[] data = null;
         if (file == null || file.isEmpty()) {
             violations.add("file is required");
-        } else if (!VIDEO_MP4.equals(file.getContentType())) {
-            violations.add("Only video/mp4 files are accepted");
+        } else {
+            data = readBytes(file);
+            if (!VIDEO_MP4.equals(file.getContentType()) || !hasMp4Header(data)) {
+                violations.add("Only video/mp4 files are accepted");
+            }
         }
         if (!violations.isEmpty()) {
             throw new BadRequestException(String.join("; ", violations));
-        }
-
-        byte[] data;
-        try {
-            data = file.getBytes();
-        } catch (IOException e) {
-            log.error("Failed to read uploaded file: {}", e.getMessage(), e);
-            throw new BadRequestException("Failed to read uploaded file");
         }
 
         String key = "splashes/" + UUID.randomUUID() + ".mp4";
@@ -138,6 +135,20 @@ public class AdminSplashServiceImpl implements AdminSplashService {
 
         log.info("splash.update.done id={} kind={} active={} pinned={}", id, saved.getKind(), saved.isActive(), saved.isPinned());
         return toResponse(saved);
+    }
+
+    private byte[] readBytes(MultipartFile file) {
+        try {
+            return file.getBytes();
+        } catch (IOException e) {
+            log.error("Failed to read uploaded file: {}", e.getMessage(), e);
+            throw new BadRequestException("Failed to read uploaded file");
+        }
+    }
+
+    // A real mp4 starts with a box whose 4 letter type, at bytes 4 to 8, is "ftyp"
+    private boolean hasMp4Header(byte[] data) {
+        return data.length >= 8 && "ftyp".equals(new String(data, 4, 4, StandardCharsets.US_ASCII));
     }
 
     private boolean isEmpty(UpdateSplashRequest request) {
