@@ -11,6 +11,9 @@ import dev.slethware.strollsplash.service.storage.StorageService;
 import dev.slethware.strollsplash.utility.ChecksumUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,6 +29,9 @@ import java.util.UUID;
 public class AdminSplashServiceImpl implements AdminSplashService {
 
     private static final String VIDEO_MP4 = "video/mp4";
+    private static final int MAX_PAGE_SIZE = 100;
+    // The id breaks ties on createdAt, so a row can never repeat or vanish between pages
+    private static final Sort NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "createdAt", "id");
 
     private final SplashVideoRepository splashVideoRepository;
     private final SplashValidator splashValidator;
@@ -76,10 +82,18 @@ public class AdminSplashServiceImpl implements AdminSplashService {
     }
 
     @Override
-    public List<AdminSplashResponse> getAllSplashes() {
-        return splashVideoRepository.findAllByOrderByCreatedAtDesc().stream()
-                .map(this::toResponse)
-                .toList();
+    public Page<AdminSplashResponse> getAllSplashes(int page, int size) {
+        List<String> violations = new ArrayList<>();
+        if (page < 0) {
+            violations.add("page must be 0 or more");
+        }
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            violations.add("size must be between 1 and " + MAX_PAGE_SIZE);
+        }
+        if (!violations.isEmpty()) {
+            throw new BadRequestException(String.join("; ", violations));
+        }
+        return splashVideoRepository.findAll(PageRequest.of(page, size, NEWEST_FIRST)).map(this::toResponse);
     }
 
     @Override

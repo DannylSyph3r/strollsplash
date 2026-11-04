@@ -9,6 +9,7 @@ import dev.slethware.strollsplash.service.splash.AdminSplashService;
 import dev.slethware.strollsplash.utility.ApiResponseUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Encoding;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,6 +18,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +43,8 @@ import java.util.UUID;
 @SecurityRequirement(name = "AdminKey")
 @Tag(name = "Splash Admin", description = "Endpoints for the design team to upload, list and update splash videos, guarded by the X-Admin-Key header")
 public class AdminSplashController {
+
+    private static final String TOTAL_COUNT_HEADER = "X-Total-Count";
 
     private final AdminSplashService adminSplashService;
 
@@ -94,21 +98,28 @@ public class AdminSplashController {
     @GetMapping
     @Operation(
             summary = "List all splash videos",
-            description = "Returns every splash video, active or not, newest first. There is no pagination."
+            description = "Returns splash videos, active or not, newest first, one page at a time. page starts at 0 and defaults to 0. size defaults to 20 and must be between 1 and 100. The total number of videos is in the X-Total-Count response header."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Splash videos retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Splash videos retrieved successfully",
+                    headers = @Header(name = "X-Total-Count", description = "Total number of splash videos across all pages", schema = @Schema(type = "integer"))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "page below 0, size outside 1 to 100, or a value that is not a number, all violations are joined in one message",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or wrong X-Admin-Key",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public ResponseEntity<ApiResponse<List<AdminSplashResponse>>> getAllSplashes() {
-        log.info("splash.list.request");
-        List<AdminSplashResponse> splashes = adminSplashService.getAllSplashes();
+    public ResponseEntity<ApiResponse<List<AdminSplashResponse>>> getAllSplashes(
+            @Parameter(description = "Page number, starting at 0")
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @Parameter(description = "Page size, 1 to 100")
+            @RequestParam(value = "size", defaultValue = "20") int size) {
 
-        return new ResponseEntity<>(
-                ApiResponseUtil.successFull("Splash videos retrieved successfully", splashes),
-                HttpStatus.OK
-        );
+        log.info("splash.list.request page={} size={}", page, size);
+        Page<AdminSplashResponse> splashes = adminSplashService.getAllSplashes(page, size);
+
+        return ResponseEntity.ok()
+                .header(TOTAL_COUNT_HEADER, String.valueOf(splashes.getTotalElements()))
+                .body(ApiResponseUtil.successFull("Splash videos retrieved successfully", splashes.getContent()));
     }
 
     @PatchMapping("/{id}")

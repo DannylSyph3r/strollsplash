@@ -11,10 +11,17 @@ import dev.slethware.strollsplash.service.storage.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -85,18 +92,66 @@ class AdminSplashServiceImplTest {
     }
 
     @Test
-    void listMapsEveryRowAndKeepsTheRepositoryOrder() {
+    void listMapsEveryRowOfThePageAndReportsTheTotal() {
         SplashVideo newer = standardRow();
         newer.setTitle("newer");
         SplashVideo older = eventRow();
         older.setTitle("older");
-        when(repository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(newer, older));
+        when(repository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(newer, older), PageRequest.of(0, 2), 5));
 
-        List<AdminSplashResponse> all = service.getAllSplashes();
+        Page<AdminSplashResponse> page = service.getAllSplashes(0, 2);
 
-        assertThat(all).extracting(AdminSplashResponse::getTitle).containsExactly("newer", "older");
-        assertThat(all.getFirst().getUrl()).isEqualTo("https://cdn.test/splashes/a.mp4");
-        assertThat(all.get(1).getStartsAt()).isEqualTo(START);
+        assertThat(page.getContent()).extracting(AdminSplashResponse::getTitle).containsExactly("newer", "older");
+        assertThat(page.getContent().getFirst().getUrl()).isEqualTo("https://cdn.test/splashes/a.mp4");
+        assertThat(page.getContent().get(1).getStartsAt()).isEqualTo(START);
+        assertThat(page.getTotalElements()).isEqualTo(5);
+    }
+
+    @Test
+    void listAsksForTheRequestedPageNewestFirstWithTheIdAsTieBreak() {
+        when(repository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+        ArgumentCaptor<Pageable> asked = ArgumentCaptor.forClass(Pageable.class);
+
+        service.getAllSplashes(3, 25);
+
+        verify(repository).findAll(asked.capture());
+        assertThat(asked.getValue().getPageNumber()).isEqualTo(3);
+        assertThat(asked.getValue().getPageSize()).isEqualTo(25);
+        assertThat(asked.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt", "id"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 100})
+    void listAcceptsTheSmallestAndLargestPageSize(int size) {
+        when(repository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+
+        service.getAllSplashes(0, size);
+
+        verify(repository).findAll(any(Pageable.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, 101})
+    void listRejectsASizeOutsideOneToOneHundred(int size) {
+        assertThatThrownBy(() -> service.getAllSplashes(0, size))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("size must be between 1 and 100");
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void listRejectsANegativePage() {
+        assertThatThrownBy(() -> service.getAllSplashes(-1, 20))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("page must be 0 or more");
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void listReportsBothBadValuesTogether() {
+        assertThatThrownBy(() -> service.getAllSplashes(-1, 0))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("page must be 0 or more; size must be between 1 and 100");
     }
 
     @Test

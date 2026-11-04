@@ -11,5 +11,4 @@ import java.util.UUID;
 public interface SplashVideoRepository extends JpaRepository<SplashVideo, UUID> {
 
     List<SplashVideo> findAllByActiveTrue();
-    List<SplashVideo> findAllByOrderByCreatedAtDesc();
 }

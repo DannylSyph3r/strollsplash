@@ -16,6 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -38,6 +41,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -91,9 +95,13 @@ class AdminSplashControllerTest {
         verifyNoInteractions(adminSplashService);
     }
 
+    private Page<AdminSplashResponse> pageOfOne(long total) {
+        return new PageImpl<>(List.of(response()), PageRequest.of(0, 20), total);
+    }
+
     @Test
     void listReturnsEveryAdminFieldWithIsoTimestamps() throws Exception {
-        when(adminSplashService.getAllSplashes()).thenReturn(List.of(response()));
+        when(adminSplashService.getAllSplashes(0, 20)).thenReturn(pageOfOne(1));
 
         mockMvc.perform(get(PATH).header(KEY_HEADER, KEY))
                 .andExpect(status().isOk())
@@ -107,6 +115,46 @@ class AdminSplashControllerTest {
                 .andExpect(jsonPath("$.data[0].pinned").value(false))
                 .andExpect(jsonPath("$.data[0].startsAt").value("2026-10-30T00:00:00Z"))
                 .andExpect(jsonPath("$.data[0].createdAt").value("2026-11-03T08:00:00Z"));
+    }
+
+    @Test
+    void listReportsTheTotalAcrossAllPagesInAHeader() throws Exception {
+        when(adminSplashService.getAllSplashes(0, 20)).thenReturn(pageOfOne(57));
+
+        mockMvc.perform(get(PATH).header(KEY_HEADER, KEY))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Total-Count", "57"))
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
+    @Test
+    void listPassesThePageAndSizeThrough() throws Exception {
+        when(adminSplashService.getAllSplashes(2, 5)).thenReturn(pageOfOne(11));
+
+        mockMvc.perform(get(PATH).param("page", "2").param("size", "5").header(KEY_HEADER, KEY))
+                .andExpect(status().isOk());
+
+        verify(adminSplashService).getAllSplashes(2, 5);
+    }
+
+    @Test
+    void listWithABadPageValueGivesTheReadableBadRequest() throws Exception {
+        mockMvc.perform(get(PATH).param("page", "abc").header(KEY_HEADER, KEY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid value 'abc' for page"))
+                .andExpect(jsonPath("$.error").value("Bad Request"));
+
+        verifyNoInteractions(adminSplashService);
+    }
+
+    @Test
+    void listShowsTheServiceRangeMessageUnchanged() throws Exception {
+        when(adminSplashService.getAllSplashes(0, 500))
+                .thenThrow(new BadRequestException("size must be between 1 and 100"));
+
+        mockMvc.perform(get(PATH).param("size", "500").header(KEY_HEADER, KEY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("size must be between 1 and 100"));
     }
 
     @Test
