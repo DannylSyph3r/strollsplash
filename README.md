@@ -8,7 +8,7 @@ A backend that tells the iOS app which splash videos it may play. The list chang
 - A CDN (content delivery network, which keeps copies of files near users) fronts the API and storage. Production would use a custom domain, not the `r2.dev` address (R2's free test address).
 - "Random rotation" means the app picks one video from a pool at each launch.
 - An event replaces the rotation for its window. I took "a new splash video for that duration" literally.
-- "About 6" is data, not code. The admin API is my assumption for how the set changes without a release.
+- The admin API is my assumption for how the set changes without a release.
 - One backend instance. Event windows are UTC.
 
 ## How it works
