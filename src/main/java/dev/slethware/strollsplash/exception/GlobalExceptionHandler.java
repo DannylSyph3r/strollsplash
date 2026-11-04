@@ -46,6 +46,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return errorResponse(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<Object> handleTooManyRequestsException(TooManyRequestsException e) {
+        log.warn("Too many requests: {}", e.getMessage());
+        return errorResponse(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
+    }
+
     @ExceptionHandler(InternalServerException.class)
     public ResponseEntity<Object> handleInternalServerException(InternalServerException e) {
         log.error("Internal server error: {}", e.getMessage(), e);

@@ -37,6 +37,17 @@ class CustomExceptionsTest {
     }
 
     @Test
+    void tooManyRequestsCarriesItsMessage() {
+        assertThat(new TooManyRequestsException("Too many uploads, try again in a minute"))
+                .hasMessage("Too many uploads, try again in a minute");
+    }
+
+    @Test
+    void tooManyRequestsHasADefaultMessage() {
+        assertThat(new TooManyRequestsException()).hasMessage("Too many requests");
+    }
+
+    @Test
     void internalServerCarriesItsMessageAndCause() {
         RuntimeException cause = new RuntimeException("boom");
         InternalServerException exception = new InternalServerException("Failed to upload video to storage", cause);

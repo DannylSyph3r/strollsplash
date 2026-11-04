@@ -60,6 +60,11 @@ class GlobalExceptionHandlerTest {
             throw new UnauthorizedException("Invalid or missing admin key");
         }
 
+        @GetMapping("/too-many")
+        void tooMany() {
+            throw new TooManyRequestsException("Too many uploads, try again in a minute");
+        }
+
         @GetMapping("/storage-failure")
         void storageFailure() {
             throw new InternalServerException("Failed to upload video to storage");
@@ -106,6 +111,12 @@ class GlobalExceptionHandlerTest {
     void unauthorizedExceptionGives401() throws Exception {
         assertError(mockMvc.perform(get("/test/unauthorized")),
                 401, "Unauthorized", "Invalid or missing admin key");
+    }
+
+    @Test
+    void tooManyRequestsExceptionGives429() throws Exception {
+        assertError(mockMvc.perform(get("/test/too-many")),
+                429, "Too Many Requests", "Too many uploads, try again in a minute");
     }
 
     @Test

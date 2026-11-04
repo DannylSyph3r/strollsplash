@@ -47,6 +47,22 @@ class SplashPropertiesTest {
     }
 
     @Test
+    void uploadLimitDefaultsToTenPerMinuteAndTakesAnOverride() {
+        runner.withPropertyValues("splash.admin-key=any-key")
+                .run(context -> assertThat(context.getBean(SplashProperties.class).getUpload().getMaxPerMinute()).isEqualTo(10));
+
+        runner.withPropertyValues("splash.admin-key=any-key", "splash.upload.max-per-minute=25")
+                .run(context -> assertThat(context.getBean(SplashProperties.class).getUpload().getMaxPerMinute()).isEqualTo(25));
+    }
+
+    @Test
+    void startupFailsWhenTheUploadLimitIsBelowOne() {
+        runner.withPropertyValues("splash.admin-key=any-key", "splash.upload.max-per-minute=0")
+                .run(context -> assertThat(context).getFailure()
+                        .hasRootCauseInstanceOf(BindValidationException.class));
+    }
+
+    @Test
     void startupFailsWithoutAdminKey() {
         runner.run(context -> assertThat(context).getFailure()
                 .hasRootCauseInstanceOf(BindValidationException.class));
