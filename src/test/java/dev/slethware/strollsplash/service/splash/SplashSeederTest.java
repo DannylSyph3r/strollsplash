@@ -73,7 +73,7 @@ class SplashSeederTest {
 
         assertThatThrownBy(() -> seederWith(mockValidator).run())
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("endsAt must be after startsAt");
+                .hasMessage("Invalid seed row 'Halloween 2026': endsAt must be after startsAt");
 
         verify(repository, never()).saveAll(any());
     }

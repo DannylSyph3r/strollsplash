@@ -1,6 +1,7 @@
 package dev.slethware.strollsplash.service.splash;
 
 import dev.slethware.strollsplash.entity.SplashVideo;
+import dev.slethware.strollsplash.exception.BadRequestException;
 import dev.slethware.strollsplash.repository.SplashVideoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,8 +38,13 @@ public class SplashSeeder implements CommandLineRunner {
         }
 
         // Every row is checked before any is saved, so one bad row leaves the table empty
-        rows.forEach(row -> splashValidator.validateOrThrow(
-                row.getTitle(), row.getKind(), row.getStartsAt(), row.getEndsAt()));
+        for (SplashVideo row : rows) {
+            try {
+                splashValidator.validateOrThrow(row.getTitle(), row.getKind(), row.getStartsAt(), row.getEndsAt());
+            } catch (BadRequestException e) {
+                throw new BadRequestException("Invalid seed row '" + row.getTitle() + "': " + e.getMessage());
+            }
+        }
         splashVideoRepository.saveAll(rows);
 
         log.info("Seeded {} splash videos", rows.size());
