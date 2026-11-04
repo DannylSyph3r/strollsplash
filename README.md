@@ -24,13 +24,13 @@ The backend returns a pool, not a single pick. A pool is the same for every user
 - A pinned video (an admin's "play this one") narrows the pool inside its tier. A pin never beats a live event.
 - An event without both times is never eligible. An empty pool is valid, and the app then plays the video bundled in it.
 
-I did not build or test the app side. I expect it to use a short timeout, play from its local cache, fall back to the bundled video, and check a download's checksum before keeping it.
+I did not build or test the app side. I expect it to use a short timeout, play from its local cache, fall back to the bundled video, and check a download's checksum (explained below) before keeping it.
 
 ## Speed
 
 - **Cache in memory.** The active rows sit in a Caffeine cache for 5 minutes (the TTL, or time to live), so a hit runs no database query. Every PATCH clears it. An upload does not, because a new video is inactive. The tier is worked out on each request, so an event starts and ends at its exact second.
 - **`Cache-Control: max-age=300, public`** lets the app or a CDN reuse its copy for 300 seconds without calling me.
-- **The ETag** is a SHA-256 fingerprint of the response, URLs included. After the 300 seconds the app asks "has this changed?" and gets a `304 Not Modified` with no body if not. The saving is modest, because the payload is small: 1,482 bytes against 164 for a `304`. It matters most behind a CDN, and a CDN domain change changes the ETag, so nobody holds a dead URL.
+- **The ETag** is a short code that stands for the current pool, like a version stamp. The server sends it with every response. After the 300 seconds the app sends the stamp back and asks "has this changed?" If not, the server answers `304 Not Modified` with no body, a tiny reply instead of the full list. The code is calculated (with SHA-256) from everything the app would see, URLs included. So it changes whenever the pool does, and when the CDN domain does. The saving is modest, because the payload is small: 1,482 bytes against 164 for a `304`. It matters most behind a CDN.
 - **The cost.** A kill switch or an event boundary can take up to 300 seconds to reach apps holding a fresh copy.
 - **Numbers.** On my laptop against local Postgres, with no network, a cache hit had a median of 0.49 ms and a miss with one query 1.82 ms. I have not measured behind a CDN or under load.
 
@@ -40,7 +40,7 @@ I did not build or test the app side. I expect it to use a short timeout, play f
 |---|---|---|---|
 | Pool or pick | Return a pool | Pick on the server | The same for everyone, so it caches. |
 | Cache | In-process Caffeine | Redis | A network hop to save a cheap query. |
-| Upload path | Through the backend | Presigned URLs (the app uploads straight to storage) | A splash is a few MB, and the server hashes what it receives. |
+| Upload path | Through the backend | Presigned URLs (the app uploads straight to storage) | A splash is a few MB, and the server can calculate the checksum from what it receives. |
 | Hiding a video | An `active` flag | A DELETE endpoint | Reversible, with no orphaned files. |
 | Admin access | One static key | Per-admin login and audit trail | A small internal tool. See below. |
 | Schema | `ddl-auto=update` and a seeder (loads the eight starting rows) | Flyway migrations | One table. Production would migrate. |
@@ -52,7 +52,7 @@ I did not build or test the app side. I expect it to use a short timeout, play f
 
 **Deliberately not built:** impression logging (a batched POST from the app into per-video daily counters would be the design), regional or per-user targeting, timezone-local events, per-admin identity, DELETE and file replacement (upload a new video and switch the old one off), carousel order or weights, video duration metadata, rate limiting beyond uploads, cache sharing across instances, and the Swift client.
 
-**Checksum.** At upload the server hashes the file with SHA-256 and stores it with the size. The app can hash its download and keep the file only if the two match, so a cut-off download never becomes a broken splash. I do not use R2's ETag for this, because what it means depends on how a file was uploaded.
+**Checksum.** A checksum is a short code calculated from a file's contents. Change one byte and the code changes. At upload the server calculates it (with SHA-256) and stores it with the size. The app calculates the code for what it downloaded and keeps the file only if the two match. If they differ, the download was cut off or damaged, so a broken file never becomes a splash. I use my own code, not R2's ETag, because what R2's code means depends on how a file was uploaded.
 
 **One static admin key.** The `X-Admin-Key` header is checked against `ADMIN_API_KEY`. I left out login and an audit trail because the brief does not stress security and this is a small internal tool. The cost is no record of who changed what, and one shared key to rotate. Within that choice, the key is compared in constant time, never logged, and the app refuses to start if it is blank.
 
@@ -96,7 +96,7 @@ On first run the seeder loads eight rows: six standard videos, Halloween 2026 an
 
 ## How it was checked
 
-There are 195 tests, and none need a database, Docker or network. I also ran a scripted pass of about 130 checks against real Postgres and a real R2 bucket, more than once on a fresh database. It covered the `304`, events and pins, every validation message, real uploads, a wrong key with a large file, restart behaviour and a storage failure. The paging, the byte check and the throttle each had their own live run. I have not checked it behind a CDN, under load, with several instances, or on a phone.
+There are 195 tests, and none need a database, Docker or network. I also ran a scripted pass of about 150 checks against real Postgres and a real R2 bucket, on a fresh database and the final code. It covered the `304`, events and pins, every validation message, real uploads, paging, the byte check, the upload throttle, a wrong key with a large file, restart behaviour and a storage failure. I have not checked it behind a CDN, under load, with several instances, or on a phone.
 
 ## Limits I accept
 
