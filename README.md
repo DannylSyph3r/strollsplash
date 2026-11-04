@@ -105,5 +105,4 @@ There are 195 tests, and none need a database, Docker or network. I also ran a s
 - The cache and the throttle live in one process. With several instances, caches catch up when the TTL ends.
 - A change can take up to 300 seconds to reach apps holding a fresh copy.
 - The upload check looks at the label and the first bytes, and does not prove the file plays. The upload is read into memory, so the 10 MB cap matters.
-- The `r2.dev` address is for development and is rate limited. Production wants a custom domain.
 - Nothing limits requests other than uploads, and the key check has no lockout. Use a long random key.
